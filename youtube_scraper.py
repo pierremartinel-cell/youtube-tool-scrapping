@@ -12,11 +12,14 @@ Usage:
 """
 
 import os
+import re
 import sys
 import time
 import argparse
 from datetime import datetime, timedelta, timezone
 from typing import List, Dict, Optional
+
+EMAIL_RE = re.compile(r'[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}')
 
 import pandas as pd
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -136,10 +139,13 @@ def get_channel_details(youtube, channel_ids: List[str]) -> Dict[str, Dict]:
             snippet = item.get("snippet", {})
 
             subscribers = stats.get("subscriberCount")
+            full_description = snippet.get("description", "")
+            email_match = EMAIL_RE.search(full_description)
             result[cid] = {
                 "username": snippet.get("customUrl", "").lstrip("@"),
                 "display_name": snippet.get("title", ""),
-                "bio_snippet": snippet.get("description", "")[:250].replace("\n", " "),
+                "bio_snippet": full_description[:250].replace("\n", " "),
+                "email": email_match.group(0) if email_match else "",
                 "country": snippet.get("country", ""),
                 "published_at": snippet.get("publishedAt", ""),
                 "followers": int(subscribers) if subscribers else 0,
@@ -281,7 +287,7 @@ def compute_scores(engagement_rate, mentions, posts_per_week, growth_rate_pct, h
 # ---------------------------------------------------------------------------
 
 COLUMNS = [
-    "platform", "username", "display_name", "profile_url", "bio_snippet",
+    "platform", "username", "display_name", "profile_url", "email", "bio_snippet",
     "followers", "tier", "engagement_rate", "engagement_rate_pct",
     "croissance_hebdo", "growth_rate_pct", "posts_per_week",
     "sorare_mentions", "is_emerging", "score_global", "score_engagement",
@@ -328,7 +334,7 @@ def export_excel(profiles: List[Dict], output_file, keywords: List[str]):
         # ---- Column widths ----
         col_widths = {
             "platform": 12, "username": 22, "display_name": 28,
-            "profile_url": 40, "bio_snippet": 45, "followers": 14,
+            "profile_url": 40, "email": 30, "bio_snippet": 45, "followers": 14,
             "tier": 10, "engagement_rate": 18, "engagement_rate_pct": 20,
             "croissance_hebdo": 18, "growth_rate_pct": 18, "posts_per_week": 16,
             "sorare_mentions": 18, "is_emerging": 14, "score_global": 14,

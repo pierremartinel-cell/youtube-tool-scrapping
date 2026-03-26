@@ -321,6 +321,7 @@ try:
             "username": username,
             "display_name": details.get("display_name") or search_data.get("display_name", ""),
             "profile_url": profile_url,
+            "email": details.get("email", ""),
             "bio_snippet": details.get("bio_snippet", ""),
             "followers": followers,
             "tier": calculate_tier(followers),
@@ -336,7 +337,7 @@ try:
             "score_croissance": sc,
             "score_pertinence": sp,
             "score_regularite": sr,
-            "status": "active" if posts_per_week >= 0.5 else "inactive",
+            "status": ("active" if posts_per_week >= 0.5 else "inactive") if fetch_stats else "active",
             "collected_at": collected_at,
         })
 
@@ -397,7 +398,7 @@ st.bar_chart(tier_counts)
 st.markdown("#### Tableau des profils (trié par score global)")
 
 display_cols = [
-    "display_name", "profile_url", "username", "tier", "followers",
+    "display_name", "profile_url", "email", "username", "tier", "followers",
     "engagement_rate_pct", "posts_per_week", "sorare_mentions",
     "score_global", "score_pertinence", "score_engagement",
     "score_croissance", "score_regularite", "is_emerging", "status",
@@ -410,6 +411,7 @@ st.dataframe(
     column_config={
         "display_name": st.column_config.TextColumn("Chaîne", width="medium"),
         "profile_url": st.column_config.LinkColumn("🔗 Lien", display_text="▶ Voir", width="small"),
+        "email": st.column_config.TextColumn("Email", width="medium"),
         "username": st.column_config.TextColumn("Handle"),
         "tier": st.column_config.TextColumn("Tier"),
         "followers": st.column_config.NumberColumn("Abonnés", format="%d"),
