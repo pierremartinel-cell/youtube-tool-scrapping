@@ -4,20 +4,53 @@ Launch: streamlit run app.py
 """
 
 import io
+import json
 import os
+import re
 import time
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
-from streamlit_local_storage import LocalStorage
 
 load_dotenv()
 
-from googleapiclient.errors import HttpError
+# ---------------------------------------------------------------------------
+# Config file persistence (replaces browser localStorage)
+# ---------------------------------------------------------------------------
+
+_CONFIG_DIR = Path.home() / ".youtube_scraper"
+_CONFIG_FILE = _CONFIG_DIR / "config.json"
+
+
+def _load_api_key() -> str:
+    """Load API key from config file."""
+    if _CONFIG_FILE.exists():
+        try:
+            data = json.loads(_CONFIG_FILE.read_text())
+            return data.get("api_key", "")
+        except (json.JSONDecodeError, OSError):
+            return ""
+    return ""
+
+
+def _save_api_key(key: str) -> None:
+    """Save API key to config file."""
+    _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    _CONFIG_FILE.write_text(json.dumps({"api_key": key}))
+
+
+def _delete_api_key() -> None:
+    """Delete API key from config file."""
+    if _CONFIG_FILE.exists():
+        _CONFIG_FILE.write_text(json.dumps({"api_key": ""}))
+
+
+from googleapiclient.errors import HttpError  # noqa: E402
 
 from youtube_scraper import (
     COLUMNS,
@@ -76,7 +109,23 @@ REGION_OPTIONS = {
     "Canada (CA)": "CA",
 }
 
-LANGUAGE_OPTIONS = ["(none)", "fr", "en", "de", "es", "it", "pt"]
+LANGUAGE_OPTIONS = ["All languages", "fr", "en", "de", "es", "it", "pt"]
+
+FOLLOWER_MIN_OPTIONS = {
+    "No minimum": 0,
+    "1K+ (Micro)": 1_000,
+    "10K+ (Mid)": 10_000,
+    "100K+ (Macro)": 100_000,
+    "1M+ (Mega)": 1_000_000,
+}
+
+FOLLOWER_MAX_OPTIONS = {
+    "No maximum": 0,
+    "1K (Nano)": 1_000,
+    "10K (Micro)": 10_000,
+    "100K (Mid)": 100_000,
+    "1M (Macro)": 1_000_000,
+}
 
 # Label mapping: data key -> English UI label
 LABEL_MAP = {
@@ -95,6 +144,26 @@ LABEL_MAP = {
     "is_emerging": "Emerging",
     "status": "Status",
 }
+
+
+_FOLLOWER_SUFFIX_RE = re.compile(r"^\s*([\d.]+)\s*([kKmM])?\s*$")
+
+
+def _parse_follower_input(label: str, presets: dict[str, int]) -> int:
+    """Parse a follower selectbox value: preset label, raw number, or K/M suffix."""
+    if label in presets:
+        return presets[label]
+    m = _FOLLOWER_SUFFIX_RE.match(label)
+    if m:
+        value = float(m.group(1))
+        suffix = (m.group(2) or "").upper()
+        if suffix == "K":
+            value *= 1_000
+        elif suffix == "M":
+            value *= 1_000_000
+        return int(value)
+    st.warning(f"Invalid follower value: '{label}' — defaulting to 0")
+    return 0
 
 
 def inject_css():
@@ -274,7 +343,7 @@ def score_bar_html(score: float, label: str, max_val: float = 100) -> str:
 # ---------------------------------------------------------------------------
 
 @st.dialog("Settings")
-def show_settings(local_storage):
+def show_settings():
     st.markdown("#### YouTube API Key")
 
     current_key = st.session_state.get("api_key", "")
@@ -289,12 +358,12 @@ def show_settings(local_storage):
     btn_left, btn_right = st.columns(2)
     with btn_left:
         if st.button("Save", use_container_width=True, type="primary", disabled=not new_key):
-            local_storage.setItem("youtube_api_key", new_key)
+            _save_api_key(new_key)
             st.session_state["api_key"] = new_key
             st.rerun()
     with btn_right:
         if st.button("Delete", use_container_width=True, disabled=not current_key):
-            local_storage.setItem("youtube_api_key", "")
+            _delete_api_key()
             st.session_state.pop("api_key", None)
             st.rerun()
 
@@ -310,19 +379,27 @@ def show_settings(local_storage):
     st.caption("Daily quota: 10,000 units. For security, restrict the key to YouTube Data API v3 only.")
 
 
-def render_header(local_storage):
-    col_logo, col_status, col_settings = st.columns([7, 2, 1])
+def render_header():
+    has_key = bool(st.session_state.get("api_key"))
+    status_color = "#10B981" if has_key else "#EF4444"
+    # Style the status tertiary button as colored text
+    st.markdown(
+        f'<style>button[kind="tertiary"] {{ color: {status_color} !important; font-weight: 600 !important; font-size: 13px !important; }}</style>',
+        unsafe_allow_html=True,
+    )
+    col_logo, col_right = st.columns([7, 3])
     with col_logo:
         st.image(LOGO_PATH, width=160)
         st.caption("YouTube Creator Scraper — Discover and score creators by keyword relevance, engagement, and growth")
-    with col_status:
-        if st.session_state.get("api_key"):
-            st.markdown('<span style="color:#10B981;font-size:13px;font-weight:600">API Connected</span>', unsafe_allow_html=True)
-        else:
-            st.markdown('<span style="color:#EF4444;font-size:13px;font-weight:600">No API Key</span>', unsafe_allow_html=True)
-    with col_settings:
-        if st.button("Settings", icon=":material/settings:"):
-            show_settings(local_storage)
+    with col_right:
+        _, col_status, col_settings = st.columns([0.5, 1, 1], gap="small")
+        with col_status:
+            label = "API Connected" if has_key else "No API Key"
+            if st.button(label, key="api_status_btn", type="tertiary", use_container_width=True):
+                show_settings()
+        with col_settings:
+            if st.button("Settings", icon=":material/settings:", use_container_width=True):
+                show_settings()
 
 
 # ---------------------------------------------------------------------------
@@ -331,15 +408,14 @@ def render_header(local_storage):
 
 def render_search_config():
     with st.container(border=True):
-        # Row 1: Main search params
-        col_kw, col_region, col_period, col_btn = st.columns([4, 2, 2, 1.5])
+        # Row 1: Keywords | Region | Language | Period
+        col_kw, col_region, col_lang, col_period = st.columns([4, 2, 2, 2])
 
         with col_kw:
-            keywords_raw = st.text_area(
-                "Keywords (one per line)",
+            keywords_raw = st.text_input(
+                "Keywords (comma-separated)",
                 value=st.session_state.get("keywords_raw", "Sorare"),
-                height=80,
-                help="Each keyword triggers a separate search. Results are merged and deduplicated.",
+                help="Separate multiple keywords with commas. Each triggers a separate search.",
                 key="kw_input",
             )
 
@@ -349,6 +425,14 @@ def render_search_config():
                 options=list(REGION_OPTIONS.keys()),
                 index=0,
                 help="Filter results by country. Leave on Worldwide for global search.",
+            )
+
+        with col_lang:
+            language = st.selectbox(
+                "Language",
+                options=LANGUAGE_OPTIONS,
+                index=0,
+                help="Filter results by relevance language.",
             )
 
         with col_period:
@@ -361,7 +445,51 @@ def render_search_config():
                 help="Time window for video publication analysis.",
             )
 
-        with col_btn:
+        # Row 2: Min foll | Max foll | Max ch/kw | Video stats+quota | Search+DL
+        r2_min, r2_max, r2_ch, r2_stats, r2_btn = st.columns([2, 2, 2, 2, 2])
+
+        with r2_min:
+            min_label = st.selectbox(
+                "Min Followers",
+                options=list(FOLLOWER_MIN_OPTIONS.keys()),
+                index=0,
+                accept_new_options=True,
+                help="Select a preset or type a custom value (e.g. 5000, 5K, 1.5M)",
+            )
+            followers_min = _parse_follower_input(min_label, FOLLOWER_MIN_OPTIONS)
+
+        with r2_max:
+            max_label = st.selectbox(
+                "Max Followers",
+                options=list(FOLLOWER_MAX_OPTIONS.keys()),
+                index=0,
+                accept_new_options=True,
+                help="Select a preset or type a custom value (e.g. 5000, 5K, 1.5M)",
+            )
+            followers_max = _parse_follower_input(max_label, FOLLOWER_MAX_OPTIONS)
+
+        with r2_ch:
+            max_channels = st.slider(
+                "Max ch/keyword",
+                min_value=10,
+                max_value=300,
+                value=100,
+                step=10,
+            )
+
+        with r2_stats:
+            fetch_stats = st.toggle(
+                "Video stats",
+                value=False,
+                help="Costs ~100 quota units per channel. Enable only with sufficient quota.",
+            )
+            kw_count = len([k for k in keywords_raw.split(",") if k.strip()])
+            quota_est = max_channels * 100 + kw_count * 300
+            if fetch_stats:
+                quota_est += max_channels * 100
+            st.caption(f"Est. quota: ~{quota_est:,} / 10K")
+
+        with r2_btn:
             st.markdown("<br>", unsafe_allow_html=True)
             run_btn = st.button("Search", use_container_width=True, type="primary")
 
@@ -382,70 +510,18 @@ def render_search_config():
                     use_container_width=True,
                 )
 
-        # Row 2: Advanced options
-        with st.expander("Advanced options"):
-            adv1, adv2, adv3 = st.columns(3)
-
-            with adv1:
-                language = st.selectbox(
-                    "Language",
-                    options=LANGUAGE_OPTIONS,
-                    index=0,
-                    help="Filter results by relevance language.",
-                )
-                followers_min = st.number_input(
-                    "Min Followers",
-                    min_value=0,
-                    value=0,
-                    step=1000,
-                    help="Set to 0 to ignore.",
-                )
-                followers_max = st.number_input(
-                    "Max Followers",
-                    min_value=0,
-                    value=0,
-                    step=10000,
-                    help="Set to 0 to ignore.",
-                )
-
-            with adv2:
-                max_channels = st.slider(
-                    "Max channels per keyword",
-                    min_value=10,
-                    max_value=300,
-                    value=100,
-                    step=10,
-                )
-                fetch_stats = st.toggle(
-                    "Fetch detailed video stats",
-                    value=False,
-                    help="Costs ~100 quota units per channel. Enable only with sufficient quota.",
-                )
-
-            with adv3:
-                output_name = st.text_input(
-                    "Export filename",
-                    value=f"youtube_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                )
-                # Quota estimate
-                kw_count = len([k for k in keywords_raw.strip().splitlines() if k.strip()])
-                quota_est = max_channels * 100 + kw_count * 300
-                if fetch_stats:
-                    quota_est += max_channels * 100
-                st.caption(f"Est. quota: ~{quota_est:,} units (daily limit: 10,000)")
-
     return {
         "run_btn": run_btn,
         "keywords_raw": keywords_raw,
         "region": REGION_OPTIONS[region_label],
         "days": days,
         "api_key": st.session_state.get("api_key", ""),
-        "language": None if language == "(none)" else language,
+        "language": None if language == "All languages" else language,
         "followers_min": followers_min,
         "followers_max": followers_max,
         "max_channels": max_channels,
         "fetch_stats": fetch_stats,
-        "output_name": output_name,
+        "output_name": f"youtube_{datetime.now().strftime('%Y%m%d')}.xlsx",
     }
 
 
@@ -472,7 +548,7 @@ def render_onboarding():
             '<div class="onboarding-step">'
             '<div class="step-num">1</div>'
             '<div class="step-title">Enter keywords</div>'
-            '<div class="step-desc">Add one or more search terms to find relevant creators.</div>'
+            '<div class="step-desc">Add one or more comma-separated search terms to find relevant creators.</div>'
             '</div>',
             unsafe_allow_html=True,
         )
@@ -522,10 +598,10 @@ def render_onboarding():
 # ---------------------------------------------------------------------------
 
 def run_search(config):
-    keywords = [k.strip() for k in config["keywords_raw"].strip().splitlines() if k.strip()]
+    keywords = [k.strip() for k in config["keywords_raw"].split(",") if k.strip()]
 
     if not config["api_key"]:
-        st.error("API key is missing. Click Settings in the header to add your YouTube API key.")
+        st.error("API key is missing. Click Settings in the header to add your YouTube API key, or set YOUTUBE_API_KEY in your .env file.")
         return
     if not keywords:
         st.error("Add at least one keyword.")
@@ -1084,13 +1160,19 @@ def render_methodology_tab(has_video_stats: bool):
 def main():
     inject_css()
 
-    # Initialize localStorage and sync API key to session_state
-    local_storage = LocalStorage()
-    stored_key = local_storage.getItem("youtube_api_key")
-    if stored_key and not st.session_state.get("api_key"):
-        st.session_state["api_key"] = stored_key
+    # Load API key from config file
+    if not st.session_state.get("api_key"):
+        stored_key = _load_api_key()
+        if stored_key:
+            st.session_state["api_key"] = stored_key
 
-    render_header(local_storage)
+    # Fall back to environment variable
+    if not st.session_state.get("api_key"):
+        env_key = os.environ.get("YOUTUBE_API_KEY", "")
+        if env_key:
+            st.session_state["api_key"] = env_key
+
+    render_header()
     config = render_search_config()
 
     # Run search if button clicked
