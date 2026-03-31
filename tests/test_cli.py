@@ -17,20 +17,32 @@ class TestCLI:
             output_file="youtube_profiles.xlsx",
             max_channels=150,
             fetch_video_stats=True,
+            video_stats_mode="full",
         )
 
     @patch("youtube_scraper.scrape")
     def test_all_args(self, mock_scrape):
-        with patch("sys.argv", [
-            "youtube_scraper.py",
-            "--keywords", "Sorare", "NFT",
-            "--region", "US",
-            "--days", "30",
-            "--language", "en",
-            "--output", "out.xlsx",
-            "--max-channels", "50",
-            "--api-key", "test-key",
-        ]):
+        with patch(
+            "sys.argv",
+            [
+                "youtube_scraper.py",
+                "--keywords",
+                "Sorare",
+                "NFT",
+                "--region",
+                "US",
+                "--days",
+                "30",
+                "--language",
+                "en",
+                "--output",
+                "out.xlsx",
+                "--max-channels",
+                "50",
+                "--api-key",
+                "test-key",
+            ],
+        ):
             main()
         mock_scrape.assert_called_once_with(
             keywords=["Sorare", "NFT"],
@@ -41,6 +53,7 @@ class TestCLI:
             output_file="out.xlsx",
             max_channels=50,
             fetch_video_stats=True,
+            video_stats_mode="full",
         )
 
     @patch("youtube_scraper.scrape")
@@ -49,3 +62,37 @@ class TestCLI:
             main()
         mock_scrape.assert_called_once()
         assert mock_scrape.call_args.kwargs["fetch_video_stats"] is False
+        assert mock_scrape.call_args.kwargs["video_stats_mode"] == "none"
+
+    @patch("youtube_scraper.scrape")
+    def test_video_stats_mode_fast(self, mock_scrape):
+        with patch("sys.argv", ["youtube_scraper.py", "--keywords", "test", "--video-stats-mode", "fast"]):
+            main()
+        mock_scrape.assert_called_once()
+        assert mock_scrape.call_args.kwargs["video_stats_mode"] == "fast"
+        assert mock_scrape.call_args.kwargs["fetch_video_stats"] is True
+
+    @patch("youtube_scraper.scrape")
+    def test_video_stats_mode_none(self, mock_scrape):
+        with patch("sys.argv", ["youtube_scraper.py", "--keywords", "test", "--video-stats-mode", "none"]):
+            main()
+        mock_scrape.assert_called_once()
+        assert mock_scrape.call_args.kwargs["video_stats_mode"] == "none"
+
+    @patch("youtube_scraper.scrape")
+    def test_no_video_stats_overrides_mode(self, mock_scrape):
+        """--no-video-stats should override --video-stats-mode to 'none'."""
+        with patch(
+            "sys.argv",
+            [
+                "youtube_scraper.py",
+                "--keywords",
+                "test",
+                "--no-video-stats",
+                "--video-stats-mode",
+                "fast",
+            ],
+        ):
+            main()
+        mock_scrape.assert_called_once()
+        assert mock_scrape.call_args.kwargs["video_stats_mode"] == "none"

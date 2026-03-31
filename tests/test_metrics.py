@@ -11,6 +11,10 @@ class TestComputeChannelMetrics:
         assert metrics["posts_per_week"] == pytest.approx(12 / (90 / 7), abs=0.01)
         assert metrics["mentions"] == 5
         assert metrics["followers"] == 25_000
+        assert metrics["total_recent_views"] == 10_000
+        assert metrics["total_recent_likes"] == 500
+        assert metrics["total_recent_comments"] == 50
+        assert metrics["recent_video_count"] == 12
 
     def test_zero_views_engagement(self, sample_channel_details, sample_search_data):
         vstats = {"views": 0, "likes": 100, "comments": 10, "video_count": 5}

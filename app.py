@@ -12,8 +12,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -52,17 +50,17 @@ def _delete_api_key() -> None:
 
 from googleapiclient.errors import HttpError  # noqa: E402
 
-from youtube_scraper import (
+from youtube_scraper import (  # noqa: E402
     COLUMNS,
     RATE_LIMIT_VIDEO_STATS,
     SCORE_WEIGHTS,
     ZERO_VIDEO_STATS,
     build_channel_profile,
     compute_channel_metrics,
-    compute_scores,
     export_excel,
     get_channel_details,
     get_recent_video_stats,
+    get_video_stats_batch,
     get_youtube_client,
     merge_keyword_results,
     search_videos_by_keyword,
@@ -167,7 +165,8 @@ def _parse_follower_input(label: str, presets: dict[str, int]) -> int:
 
 
 def inject_css():
-    st.markdown("""
+    st.markdown(
+        """
 <style>
     /* --- Page background --- */
     .stApp { background-color: #F8FAFC; }
@@ -273,20 +272,22 @@ def inject_css():
         background: #333333 !important;
     }
 
-    /* --- Tab styling --- */
-    .stTabs [data-baseweb="tab-list"] { gap: 0px; }
-    .stTabs [data-baseweb="tab"] {
-        padding: 10px 24px; font-weight: 500;
+    /* --- Section header --- */
+    .section-header {
+        font-size: 18px; font-weight: 600; color: #0F172A;
+        margin: 24px 0 12px 0;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
-    .stTabs [aria-selected="true"] { border-bottom-color: #000000 !important; }
 </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------------------------------------------------------------------
 # Helper functions
 # ---------------------------------------------------------------------------
+
 
 def score_color(score: float) -> str:
     if score >= 80:
@@ -341,6 +342,7 @@ def score_bar_html(score: float, label: str, max_val: float = 100) -> str:
 # ---------------------------------------------------------------------------
 # Header & Settings
 # ---------------------------------------------------------------------------
+
 
 @st.dialog("Settings")
 def show_settings():
@@ -405,6 +407,7 @@ def render_header():
 # ---------------------------------------------------------------------------
 # Search config card
 # ---------------------------------------------------------------------------
+
 
 def render_search_config():
     with st.container(border=True):
@@ -478,15 +481,18 @@ def render_search_config():
             )
 
         with r2_stats:
-            fetch_stats = st.toggle(
-                "Video stats",
-                value=False,
-                help="Costs ~100 quota units per channel. Enable only with sufficient quota.",
+            stats_mode = st.selectbox(
+                "Video stats mode",
+                options=["Fast", "Full", "None"],
+                index=0,
+                help="Fast: reuse search video IDs (~1 unit/batch). Full: per-channel search (~100 units/ch). None: skip.",
             )
             kw_count = len([k for k in keywords_raw.split(",") if k.strip()])
             quota_est = max_channels * 100 + kw_count * 300
-            if fetch_stats:
+            if stats_mode == "Full":
                 quota_est += max_channels * 100
+            elif stats_mode == "Fast":
+                quota_est += max_channels  # ~1 unit per batch of 50
             st.caption(f"Est. quota: ~{quota_est:,} / 10K")
 
         with r2_btn:
@@ -520,7 +526,7 @@ def render_search_config():
         "followers_min": followers_min,
         "followers_max": followers_max,
         "max_channels": max_channels,
-        "fetch_stats": fetch_stats,
+        "stats_mode": stats_mode.lower(),  # "fast", "full", or "none"
         "output_name": f"youtube_{datetime.now().strftime('%Y%m%d')}.xlsx",
     }
 
@@ -529,16 +535,17 @@ def render_search_config():
 # Empty state / onboarding
 # ---------------------------------------------------------------------------
 
+
 def render_onboarding():
     st.markdown("<br>", unsafe_allow_html=True)
 
     st.markdown(
         '<div style="text-align:center;margin:40px 0 16px 0">'
         '<p style="font-size:28px;font-weight:700;color:#0F172A;margin-bottom:4px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">'
-        'Find and score YouTube creators</p>'
+        "Find and score YouTube creators</p>"
         '<p style="font-size:16px;color:#64748B;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">'
-        'Search by keywords, filter by region and followers, and export ranked results.</p>'
-        '</div>',
+        "Search by keywords, filter by region and followers, and export ranked results.</p>"
+        "</div>",
         unsafe_allow_html=True,
     )
 
@@ -549,7 +556,7 @@ def render_onboarding():
             '<div class="step-num">1</div>'
             '<div class="step-title">Enter keywords</div>'
             '<div class="step-desc">Add one or more comma-separated search terms to find relevant creators.</div>'
-            '</div>',
+            "</div>",
             unsafe_allow_html=True,
         )
     with col2:
@@ -557,8 +564,8 @@ def render_onboarding():
             '<div class="onboarding-step">'
             '<div class="step-num">2</div>'
             '<div class="step-title">Review results</div>'
-            '<div class="step-desc">Browse scored channels across Overview, Channels, and Analytics tabs.</div>'
-            '</div>',
+            '<div class="step-desc">Browse scored channels with engagement breakdown, growth, and contact info.</div>'
+            "</div>",
             unsafe_allow_html=True,
         )
     with col3:
@@ -567,7 +574,7 @@ def render_onboarding():
             '<div class="step-num">3</div>'
             '<div class="step-title">Export shortlist</div>'
             '<div class="step-desc">Download a styled Excel report to share with your team.</div>'
-            '</div>',
+            "</div>",
             unsafe_allow_html=True,
         )
 
@@ -575,7 +582,7 @@ def render_onboarding():
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown(
         '<p style="text-align:center;font-size:14px;color:#64748B;font-weight:500;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">'
-        'Quick start examples</p>',
+        "Quick start examples</p>",
         unsafe_allow_html=True,
     )
     qc1, qc2, qc3 = st.columns(3)
@@ -597,11 +604,14 @@ def render_onboarding():
 # Progress UX
 # ---------------------------------------------------------------------------
 
+
 def run_search(config):
     keywords = [k.strip() for k in config["keywords_raw"].split(",") if k.strip()]
 
     if not config["api_key"]:
-        st.error("API key is missing. Click Settings in the header to add your YouTube API key, or set YOUTUBE_API_KEY in your .env file.")
+        st.error(
+            "API key is missing. Click Settings in the header to add your YouTube API key, or set YOUTUBE_API_KEY in your .env file."
+        )
         return
     if not keywords:
         st.error("Add at least one keyword.")
@@ -616,10 +626,14 @@ def run_search(config):
             for i, kw in enumerate(keywords):
                 st.write(f"Searching keyword: **{kw}** ({i + 1}/{len(keywords)})")
                 found = search_videos_by_keyword(
-                    youtube, kw, config["region"], config["days"],
-                    config["language"], config["max_channels"],
+                    youtube,
+                    kw,
+                    config["region"],
+                    config["days"],
+                    config["language"],
+                    config["max_channels"],
                 )
-                st.write(f"Found {len(found)} channels for \"{kw}\"")
+                st.write(f'Found {len(found)} channels for "{kw}"')
                 merge_keyword_results(all_channels, found)
 
             if not all_channels:
@@ -630,7 +644,7 @@ def run_search(config):
             st.write(f"Total unique channels: {len(all_channels)}")
 
             # Step 2: fetch details
-            channel_ids = list(all_channels.keys())[:config["max_channels"]]
+            channel_ids = list(all_channels.keys())[: config["max_channels"]]
             st.write(f"Fetching details for {len(channel_ids)} channels...")
             channel_details = get_channel_details(youtube, channel_ids)
 
@@ -653,17 +667,21 @@ def run_search(config):
                     progress.progress((idx + 1) / len(channel_ids))
                     continue
 
-                if config["fetch_stats"]:
+                mode = config["stats_mode"]
+                if mode == "full":
                     try:
                         vstats = get_recent_video_stats(youtube, cid, config["days"])
                         time.sleep(RATE_LIMIT_VIDEO_STATS)
                     except HttpError:
                         vstats = dict(ZERO_VIDEO_STATS)
-                else:
+                elif mode == "fast":
+                    vstats = get_video_stats_batch(youtube, search_data.get("video_ids", []))
+                else:  # "none"
                     vstats = dict(ZERO_VIDEO_STATS)
 
+                has_stats = mode != "none"
                 metrics = compute_channel_metrics(details, vstats, search_data, config["days"])
-                profile = build_channel_profile(cid, details, search_data, metrics, config["fetch_stats"], collected_at)
+                profile = build_channel_profile(cid, details, search_data, metrics, has_stats, collected_at)
                 profiles.append(profile)
                 progress.progress((idx + 1) / len(channel_ids))
 
@@ -674,7 +692,9 @@ def run_search(config):
             err_str = str(e)
             status_container.update(label="API Error", state="error")
             if "quotaExceeded" in err_str or "rateLimitExceeded" in err_str:
-                st.error("YouTube daily quota exceeded (10,000 units/day). Wait until midnight Pacific time, disable detailed video stats, or reduce max channels.")
+                st.error(
+                    "YouTube daily quota exceeded (10,000 units/day). Wait until midnight Pacific time, disable detailed video stats, or reduce max channels."
+                )
             elif "keyInvalid" in err_str or "API key not valid" in err_str:
                 st.error("Invalid API key. Check that it's correctly entered.")
             elif "forbidden" in err_str.lower():
@@ -693,8 +713,10 @@ def run_search(config):
 
     # Store in session state
     st.session_state["profiles"] = profiles
-    st.session_state["df"] = pd.DataFrame(profiles, columns=COLUMNS).sort_values("score_global", ascending=False).reset_index(drop=True)
-    st.session_state["has_video_stats"] = config["fetch_stats"]
+    st.session_state["df"] = (
+        pd.DataFrame(profiles, columns=COLUMNS).sort_values("score_global", ascending=False).reset_index(drop=True)
+    )
+    st.session_state["has_video_stats"] = config["stats_mode"] != "none"
     st.session_state["search_keywords"] = keywords
     st.session_state["output_name"] = config["output_name"]
     st.rerun()
@@ -703,6 +725,7 @@ def run_search(config):
 # ---------------------------------------------------------------------------
 # Channel detail dialog
 # ---------------------------------------------------------------------------
+
 
 @st.dialog("Channel Details", width="large")
 def show_channel_detail(row):
@@ -734,18 +757,61 @@ def show_channel_detail(row):
     # Metric cards
     mc1, mc2, mc3, mc4 = st.columns(4)
     with mc1:
-        st.markdown(f'<div class="detail-metric"><div class="dm-value">{format_followers(row.get("followers", 0))}</div><div class="dm-label">Followers</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="detail-metric"><div class="dm-value">{format_followers(row.get("followers", 0))}</div><div class="dm-label">Followers</div></div>',
+            unsafe_allow_html=True,
+        )
     with mc2:
-        st.markdown(f'<div class="detail-metric"><div class="dm-value">{row.get("engagement_rate_pct", 0):.2f}%</div><div class="dm-label">Engagement</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="detail-metric"><div class="dm-value">{row.get("engagement_rate_pct", 0):.2f}%</div><div class="dm-label">Engagement</div></div>',
+            unsafe_allow_html=True,
+        )
     with mc3:
-        st.markdown(f'<div class="detail-metric"><div class="dm-value">{row.get("posts_per_week", 0):.1f}</div><div class="dm-label">Posts/week</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="detail-metric"><div class="dm-value">{row.get("posts_per_week", 0):.1f}</div><div class="dm-label">Posts/week</div></div>',
+            unsafe_allow_html=True,
+        )
     with mc4:
-        st.markdown(f'<div class="detail-metric"><div class="dm-value">{row.get("growth_rate_pct", 0):.2f}%</div><div class="dm-label">Growth</div></div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="detail-metric"><div class="dm-value">{row.get("growth_rate_pct", 0):.2f}%</div><div class="dm-label">Growth</div></div>',
+            unsafe_allow_html=True,
+        )
+
+    # Engagement breakdown
+    views = row.get("total_recent_views", 0)
+    likes = row.get("total_recent_likes", 0)
+    comments = row.get("total_recent_comments", 0)
+    vid_count = row.get("recent_video_count", 0)
+    if views > 0 or likes > 0 or comments > 0:
+        eb1, eb2, eb3, eb4 = st.columns(4)
+        with eb1:
+            st.markdown(
+                f'<div class="detail-metric"><div class="dm-value">{views:,}</div><div class="dm-label">Recent Views</div></div>',
+                unsafe_allow_html=True,
+            )
+        with eb2:
+            st.markdown(
+                f'<div class="detail-metric"><div class="dm-value">{likes:,}</div><div class="dm-label">Recent Likes</div></div>',
+                unsafe_allow_html=True,
+            )
+        with eb3:
+            st.markdown(
+                f'<div class="detail-metric"><div class="dm-value">{comments:,}</div><div class="dm-label">Recent Comments</div></div>',
+                unsafe_allow_html=True,
+            )
+        with eb4:
+            st.markdown(
+                f'<div class="detail-metric"><div class="dm-value">{vid_count}</div><div class="dm-label">Videos Analyzed</div></div>',
+                unsafe_allow_html=True,
+            )
 
     st.markdown("---")
 
     # Score breakdown
-    st.markdown('<p style="font-size:15px;font-weight:600;color:#0F172A;margin-bottom:8px">Score Breakdown</p>', unsafe_allow_html=True)
+    st.markdown(
+        '<p style="font-size:15px;font-weight:600;color:#0F172A;margin-bottom:8px">Score Breakdown</p>',
+        unsafe_allow_html=True,
+    )
     st.markdown(score_bar_html(row.get("score_global", 0), "Global Score"), unsafe_allow_html=True)
     st.markdown(score_bar_html(row.get("score_pertinence", 0), "Relevance"), unsafe_allow_html=True)
     st.markdown(score_bar_html(row.get("score_engagement", 0), "Engagement"), unsafe_allow_html=True)
@@ -754,12 +820,12 @@ def show_channel_detail(row):
 
 
 # ---------------------------------------------------------------------------
-# Tab: Overview
+# Summary strip
 # ---------------------------------------------------------------------------
 
-def render_overview_tab(df: pd.DataFrame):
-    # KPI cards row
-    kc1, kc2, kc3, kc4, kc5 = st.columns(5)
+
+def render_summary_strip(df: pd.DataFrame):
+    kc1, kc2, kc3, kc4, kc5, kc6 = st.columns(6)
     with kc1:
         st.markdown(kpi_card(str(len(df)), "Channels Found"), unsafe_allow_html=True)
     with kc2:
@@ -768,83 +834,31 @@ def render_overview_tab(df: pd.DataFrame):
         avg_eng = df["engagement_rate_pct"].mean()
         st.markdown(kpi_card(f"{avg_eng:.2f}%", "Avg Engagement"), unsafe_allow_html=True)
     with kc4:
+        total_views = int(df["total_recent_views"].sum())
+        st.markdown(kpi_card(format_followers(total_views), "Total Views"), unsafe_allow_html=True)
+    with kc5:
         with_mentions = int((df["sorare_mentions"] > 0).sum())
         st.markdown(kpi_card(str(with_mentions), "With Mentions"), unsafe_allow_html=True)
-    with kc5:
+    with kc6:
         emerging_count = int(df["is_emerging"].sum())
         st.markdown(kpi_card(str(emerging_count), "Emerging"), unsafe_allow_html=True)
 
+
+# ---------------------------------------------------------------------------
+# Creator list
+# ---------------------------------------------------------------------------
+
+
+def render_creator_list(df: pd.DataFrame, has_video_stats: bool):
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Charts row
-    chart_left, chart_right = st.columns(2)
-
-    with chart_left:
-        tier_counts = df["tier"].value_counts().reindex(TIER_ORDER, fill_value=0)
-        colors = [TIER_COLORS[t]["color"] for t in TIER_ORDER]
-        fig_tier = go.Figure(go.Bar(
-            y=TIER_ORDER,
-            x=tier_counts.values,
-            orientation="h",
-            marker_color=colors,
-            text=tier_counts.values,
-            textposition="outside",
-        ))
-        fig_tier.update_layout(
-            title="Tier Distribution",
-            xaxis_title="Count",
-            yaxis_title="",
-            height=320,
-            margin=dict(l=20, r=20, t=50, b=20),
-            plot_bgcolor="#FFFFFF",
-            paper_bgcolor="#FFFFFF",
-            yaxis=dict(autorange="reversed"),
-        )
-        st.plotly_chart(fig_tier, use_container_width=True)
-
-    with chart_right:
-        fig_hist = px.histogram(
-            df, x="score_global", nbins=20,
-            title="Score Distribution",
-            color_discrete_sequence=["#000000"],
-        )
-        fig_hist.update_layout(
-            xaxis_title="Global Score",
-            yaxis_title="Count",
-            height=320,
-            margin=dict(l=20, r=20, t=50, b=20),
-            plot_bgcolor="#FFFFFF",
-            paper_bgcolor="#FFFFFF",
-        )
-        st.plotly_chart(fig_hist, use_container_width=True)
-
-    # Top 5
-    st.markdown("#### Top 5 Performers")
-    top5 = df.head(5)
-    for _, row in top5.iterrows():
-        tc = TIER_COLORS.get(row["tier"], {"color": "#6B7280", "bg": "#F3F4F6"})
-        sc = score_color(row["score_global"])
-        st.markdown(
-            f'<div style="display:flex;align-items:center;gap:16px;padding:10px 16px;background:#fff;border:1px solid #E2E8F0;border-radius:8px;margin-bottom:6px">'
-            f'<span style="font-weight:600;color:#0F172A;min-width:200px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">{row["display_name"]}</span>'
-            f'<span class="tier-badge" style="color:{tc["color"]};background:{tc["bg"]}">{row["tier"]}</span>'
-            f'<span style="color:#64748B;font-size:13px">{format_followers(row["followers"])}</span>'
-            f'<span style="margin-left:auto;font-size:20px;font-weight:700;color:{sc};font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">{row["score_global"]:.0f}</span>'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-
-
-# ---------------------------------------------------------------------------
-# Tab: Channels
-# ---------------------------------------------------------------------------
-
-def render_channels_tab(df: pd.DataFrame, has_video_stats: bool):
     # Filter bar
     fc1, fc2, fc3, fc4 = st.columns([2, 2, 1, 3])
     with fc1:
         tier_filter = st.multiselect(
-            "Tier", options=TIER_ORDER, default=TIER_ORDER,
+            "Tier",
+            options=TIER_ORDER,
+            default=TIER_ORDER,
             help="Filter by channel tier",
         )
     with fc2:
@@ -871,20 +885,35 @@ def render_channels_tab(df: pd.DataFrame, has_video_stats: bool):
         st.info("No channels match your filters.")
         return
 
-    # Display columns
+    # Display columns — includes engagement breakdown
     display_cols = [
-        "display_name", "tier", "followers", "score_global",
-        "engagement_rate_pct", "posts_per_week", "is_emerging",
+        "display_name",
+        "tier",
+        "followers",
+        "score_global",
+        "engagement_rate_pct",
+        "total_recent_views",
+        "total_recent_likes",
+        "total_recent_comments",
+        "growth_rate_pct",
+        "posts_per_week",
+        "email",
+        "profile_url",
     ]
 
     col_config = {
         "display_name": st.column_config.TextColumn("Channel", width="medium"),
         "tier": st.column_config.TextColumn("Tier", width="small"),
         "followers": st.column_config.NumberColumn("Followers", format="%d"),
-        "score_global": st.column_config.ProgressColumn("Global Score", min_value=0, max_value=100, format="%.0f"),
-        "engagement_rate_pct": st.column_config.NumberColumn("Engagement %", format="%.2f"),
-        "posts_per_week": st.column_config.NumberColumn("Posts/week", format="%.1f"),
-        "is_emerging": st.column_config.CheckboxColumn("Emerging"),
+        "score_global": st.column_config.ProgressColumn("Score", min_value=0, max_value=100, format="%.0f"),
+        "engagement_rate_pct": st.column_config.NumberColumn("Eng. %", format="%.2f"),
+        "total_recent_views": st.column_config.NumberColumn("Views", format="%d"),
+        "total_recent_likes": st.column_config.NumberColumn("Likes", format="%d"),
+        "total_recent_comments": st.column_config.NumberColumn("Comments", format="%d"),
+        "growth_rate_pct": st.column_config.NumberColumn("Growth %/wk", format="%.2f"),
+        "posts_per_week": st.column_config.NumberColumn("Posts/wk", format="%.1f"),
+        "email": st.column_config.TextColumn("Email", width="medium"),
+        "profile_url": st.column_config.LinkColumn("YouTube", width="small", display_text="Link"),
     }
 
     # Interactive table with row selection
@@ -906,105 +935,12 @@ def render_channels_tab(df: pd.DataFrame, has_video_stats: bool):
 
 
 # ---------------------------------------------------------------------------
-# Tab: Analytics
+# Methodology (collapsible)
 # ---------------------------------------------------------------------------
 
-def render_analytics_tab(df: pd.DataFrame):
-    # Scatter: Followers vs Score
-    fig_scatter = px.scatter(
-        df,
-        x="followers",
-        y="score_global",
-        color="tier",
-        size="engagement_rate_pct",
-        hover_name="display_name",
-        log_x=True,
-        title="Followers vs Global Score",
-        color_discrete_map={t: TIER_COLORS[t]["color"] for t in TIER_ORDER},
-        category_orders={"tier": TIER_ORDER},
-    )
-    fig_scatter.update_layout(
-        xaxis_title="Followers (log scale)",
-        yaxis_title="Global Score",
-        height=450,
-        plot_bgcolor="#FFFFFF",
-        paper_bgcolor="#FFFFFF",
-        margin=dict(l=20, r=20, t=50, b=20),
-    )
-    st.plotly_chart(fig_scatter, use_container_width=True)
 
-    # Two charts side by side
-    an_left, an_right = st.columns(2)
-
-    with an_left:
-        fig_hist = px.histogram(
-            df, x="score_global", nbins=25,
-            title="Score Distribution",
-            color_discrete_sequence=["#000000"],
-        )
-        fig_hist.update_layout(
-            xaxis_title="Global Score",
-            yaxis_title="Count",
-            height=350,
-            plot_bgcolor="#FFFFFF",
-            paper_bgcolor="#FFFFFF",
-            margin=dict(l=20, r=20, t=50, b=20),
-        )
-        st.plotly_chart(fig_hist, use_container_width=True)
-
-    with an_right:
-        tier_counts = df["tier"].value_counts().reindex(TIER_ORDER, fill_value=0)
-        total = tier_counts.sum()
-        pct_labels = [f"{c} ({c / total * 100:.0f}%)" if total > 0 else str(c) for c in tier_counts.values]
-        colors = [TIER_COLORS[t]["color"] for t in TIER_ORDER]
-        fig_tier = go.Figure(go.Bar(
-            y=TIER_ORDER,
-            x=tier_counts.values,
-            orientation="h",
-            marker_color=colors,
-            text=pct_labels,
-            textposition="outside",
-        ))
-        fig_tier.update_layout(
-            title="Tier Breakdown",
-            xaxis_title="Count",
-            height=350,
-            margin=dict(l=20, r=20, t=50, b=20),
-            plot_bgcolor="#FFFFFF",
-            paper_bgcolor="#FFFFFF",
-            yaxis=dict(autorange="reversed"),
-        )
-        st.plotly_chart(fig_tier, use_container_width=True)
-
-    # Score correlation heatmap
-    score_cols = ["score_global", "score_pertinence", "score_engagement", "score_croissance", "score_regularite"]
-    score_labels = ["Global", "Relevance", "Engagement", "Growth", "Regularity"]
-    corr = df[score_cols].corr()
-    fig_heat = go.Figure(go.Heatmap(
-        z=corr.values,
-        x=score_labels,
-        y=score_labels,
-        colorscale=[[0, "#F8FAFC"], [0.5, "#94A3B8"], [1, "#000000"]],
-        text=corr.values.round(2),
-        texttemplate="%{text}",
-        textfont=dict(size=12),
-    ))
-    fig_heat.update_layout(
-        title="Score Correlation Matrix",
-        height=400,
-        margin=dict(l=20, r=20, t=50, b=20),
-        plot_bgcolor="#FFFFFF",
-        paper_bgcolor="#FFFFFF",
-    )
-    st.plotly_chart(fig_heat, use_container_width=True)
-
-
-# ---------------------------------------------------------------------------
-# Tab: Methodology
-# ---------------------------------------------------------------------------
-
-def render_methodology_tab(has_video_stats: bool):
-    st.markdown("### Scoring Formula")
+def render_methodology(has_video_stats: bool):
+    st.markdown("#### Scoring Formula")
 
     w = SCORE_WEIGHTS
     if has_video_stats:
@@ -1037,7 +973,7 @@ def render_methodology_tab(has_video_stats: bool):
             f'<span class="wb-label">{name}</span>'
             f'<div class="wb-bar" style="width:{pct * 3}px;background:{color}"></div>'
             f'<span class="wb-pct">{pct}%</span>'
-            f'</div>',
+            f"</div>",
             unsafe_allow_html=True,
         )
 
@@ -1047,7 +983,7 @@ def render_methodology_tab(has_video_stats: bool):
     st.markdown("---")
 
     # Threshold tables
-    st.markdown("### Score Thresholds")
+    st.markdown("#### Score Thresholds")
     th_left, th_right = st.columns(2)
 
     with th_left:
@@ -1109,7 +1045,7 @@ def render_methodology_tab(has_video_stats: bool):
     st.markdown("---")
 
     # Tier system
-    st.markdown("### Tier System")
+    st.markdown("#### Tier System")
     with st.container(border=True):
         for tier_name in TIER_ORDER:
             tc = TIER_COLORS[tier_name]
@@ -1123,39 +1059,11 @@ def render_methodology_tab(has_video_stats: bool):
             )
     st.caption("**Emerging** = weekly growth > 5% AND fewer than 50K followers.")
 
-    st.markdown("---")
-
-    # Score Simulator
-    st.markdown("### Score Simulator")
-    st.caption("Adjust the inputs to see how the global score is computed.")
-
-    sim_left, sim_right = st.columns(2)
-    with sim_left:
-        sim_mentions = st.slider("Keyword mentions", 0, 20, 3, key="sim_mentions")
-        sim_engagement = st.slider("Engagement rate (%)", 0.0, 15.0, 3.0, step=0.5, key="sim_engagement")
-    with sim_right:
-        sim_posts = st.slider("Posts per week", 0.0, 10.0, 1.0, step=0.5, key="sim_posts")
-        sim_growth = st.slider("Growth rate (%/week)", 0.0, 50.0, 5.0, step=1.0, key="sim_growth")
-
-    se, sc, sp, sr, sg = compute_scores(
-        sim_engagement / 100, sim_mentions, sim_posts, sim_growth,
-        has_video_stats=has_video_stats,
-    )
-
-    st.markdown("---")
-    st.markdown(score_bar_html(sg, "Global Score"), unsafe_allow_html=True)
-    sim_detail_left, sim_detail_right = st.columns(2)
-    with sim_detail_left:
-        st.markdown(score_bar_html(sp, "Relevance"), unsafe_allow_html=True)
-        st.markdown(score_bar_html(se, "Engagement"), unsafe_allow_html=True)
-    with sim_detail_right:
-        st.markdown(score_bar_html(sc, "Growth"), unsafe_allow_html=True)
-        st.markdown(score_bar_html(sr, "Regularity"), unsafe_allow_html=True)
-
 
 # ---------------------------------------------------------------------------
 # Main app
 # ---------------------------------------------------------------------------
+
 
 def main():
     inject_css()
@@ -1187,22 +1095,15 @@ def main():
     df = st.session_state["df"]
     has_video_stats = st.session_state.get("has_video_stats", False)
 
-    # Results tabs
-    tab_overview, tab_channels, tab_analytics, tab_methodology = st.tabs(
-        ["Overview", "Channels", "Analytics", "Methodology"]
-    )
+    # Summary strip
+    render_summary_strip(df)
 
-    with tab_overview:
-        render_overview_tab(df)
+    # Creator list with filters
+    render_creator_list(df, has_video_stats)
 
-    with tab_channels:
-        render_channels_tab(df, has_video_stats)
-
-    with tab_analytics:
-        render_analytics_tab(df)
-
-    with tab_methodology:
-        render_methodology_tab(has_video_stats)
+    # Methodology expander
+    with st.expander("Methodology & Scoring"):
+        render_methodology(has_video_stats)
 
 
 main()

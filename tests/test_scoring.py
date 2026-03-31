@@ -28,57 +28,69 @@ class TestScoreFromThresholds:
         assert _score_from_thresholds(100, [], default=7) == 7
 
 
-@pytest.mark.parametrize("rate,expected", [
-    (0.15, 100),
-    (0.10, 100),
-    (0.07, 85),
-    (0.05, 70),
-    (0.03, 55),
-    (0.01, 35),
-    (0.005, 15),
-    (0.0, 15),
-])
+@pytest.mark.parametrize(
+    "rate,expected",
+    [
+        (0.15, 100),
+        (0.10, 100),
+        (0.07, 85),
+        (0.05, 70),
+        (0.03, 55),
+        (0.01, 35),
+        (0.005, 15),
+        (0.0, 15),
+    ],
+)
 def test_score_engagement(rate, expected):
     assert score_engagement(rate) == expected
 
 
-@pytest.mark.parametrize("mentions,expected", [
-    (15, 100),
-    (10, 100),
-    (5, 85),
-    (3, 65),
-    (2, 45),
-    (1, 25),
-    (0, 0),
-])
+@pytest.mark.parametrize(
+    "mentions,expected",
+    [
+        (15, 100),
+        (10, 100),
+        (5, 85),
+        (3, 65),
+        (2, 45),
+        (1, 25),
+        (0, 0),
+    ],
+)
 def test_score_pertinence(mentions, expected):
     assert score_pertinence(mentions) == expected
 
 
-@pytest.mark.parametrize("ppw,expected", [
-    (5, 100),
-    (4, 100),
-    (3, 85),
-    (2, 70),
-    (1, 50),
-    (0.5, 30),
-    (0.2, 10),
-    (0, 10),
-])
+@pytest.mark.parametrize(
+    "ppw,expected",
+    [
+        (5, 100),
+        (4, 100),
+        (3, 85),
+        (2, 70),
+        (1, 50),
+        (0.5, 30),
+        (0.2, 10),
+        (0, 10),
+    ],
+)
 def test_score_regularite(ppw, expected):
     assert score_regularite(ppw) == expected
 
 
-@pytest.mark.parametrize("growth,expected", [
-    (50, 100),
-    (30, 100),
-    (20, 85),
-    (10, 65),
-    (5, 45),
-    (1, 25),
-    (0.5, 10),
-    (0, 10),
-])
+@pytest.mark.parametrize(
+    "growth,expected",
+    [
+        (50, 100),
+        (30, 100),
+        (20, 85),
+        (10, 65),
+        (5, 45),
+        (1, 25),
+        (0.5, 10),
+        (0, 10),
+    ],
+)
 def test_score_croissance(growth, expected):
     assert score_croissance(growth) == expected
 
@@ -87,9 +99,9 @@ class TestComputeScores:
     def test_with_video_stats(self):
         se, sc, sp, sr, sg = compute_scores(0.10, 5, 3, 20, has_video_stats=True)
         assert se == 100  # engagement
-        assert sp == 85   # pertinence
-        assert sr == 85   # regularite
-        assert sc == 85   # croissance
+        assert sp == 85  # pertinence
+        assert sr == 85  # regularite
+        assert sc == 85  # croissance
         assert sg == pytest.approx(100 * 0.28 + 85 * 0.37 + 85 * 0.15 + 85 * 0.20, abs=0.2)
 
     def test_without_video_stats(self):

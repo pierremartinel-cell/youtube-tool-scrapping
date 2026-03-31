@@ -16,30 +16,36 @@ def mock_profiles():
         ppw = 0.5 + i * 0.3
         growth = i * 2.5
         se, sc, sp, sr, sg = compute_scores(eng, mentions, ppw, growth, has_video_stats=True)
-        profiles.append({
-            "platform": "YouTube",
-            "username": f"creator_{i}",
-            "display_name": f"Test Creator {i}",
-            "profile_url": f"https://www.youtube.com/@creator_{i}",
-            "email": f"creator{i}@example.com",
-            "bio_snippet": f"Bio of creator {i}.",
-            "followers": followers,
-            "tier": calculate_tier(followers),
-            "engagement_rate": round(eng, 6),
-            "engagement_rate_pct": round(eng * 100, 3),
-            "croissance_hebdo": round(followers / 52, 1),
-            "growth_rate_pct": round(growth, 2),
-            "posts_per_week": round(ppw, 2),
-            "sorare_mentions": mentions,
-            "is_emerging": growth > 5 and followers < 50_000,
-            "score_global": sg,
-            "score_engagement": se,
-            "score_croissance": sc,
-            "score_pertinence": sp,
-            "score_regularite": sr,
-            "status": "active" if ppw >= 0.5 else "inactive",
-            "collected_at": "2025-01-01 12:00:00",
-        })
+        profiles.append(
+            {
+                "platform": "YouTube",
+                "username": f"creator_{i}",
+                "display_name": f"Test Creator {i}",
+                "profile_url": f"https://www.youtube.com/@creator_{i}",
+                "email": f"creator{i}@example.com",
+                "bio_snippet": f"Bio of creator {i}.",
+                "followers": followers,
+                "tier": calculate_tier(followers),
+                "engagement_rate": round(eng, 6),
+                "engagement_rate_pct": round(eng * 100, 3),
+                "croissance_hebdo": round(followers / 52, 1),
+                "growth_rate_pct": round(growth, 2),
+                "posts_per_week": round(ppw, 2),
+                "sorare_mentions": mentions,
+                "is_emerging": growth > 5 and followers < 50_000,
+                "score_global": sg,
+                "score_engagement": se,
+                "score_croissance": sc,
+                "score_pertinence": sp,
+                "score_regularite": sr,
+                "total_recent_views": (i + 1) * 1_000,
+                "total_recent_likes": (i + 1) * 50,
+                "total_recent_comments": (i + 1) * 5,
+                "recent_video_count": (i + 1) * 3,
+                "status": "active" if ppw >= 0.5 else "inactive",
+                "collected_at": "2025-01-01 12:00:00",
+            }
+        )
     return profiles
 
 

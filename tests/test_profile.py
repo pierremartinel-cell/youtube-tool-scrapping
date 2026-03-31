@@ -1,4 +1,3 @@
-
 from youtube_scraper import COLUMNS, ZERO_VIDEO_STATS, build_channel_profile, compute_channel_metrics
 
 
@@ -6,7 +5,12 @@ class TestBuildChannelProfile:
     def _make_profile(self, details, search_data, vstats, has_video_stats=True, days=90):
         metrics = compute_channel_metrics(details, vstats, search_data, days)
         return build_channel_profile(
-            "UC_TEST_123", details, search_data, metrics, has_video_stats, "2025-01-01 12:00:00",
+            "UC_TEST_123",
+            details,
+            search_data,
+            metrics,
+            has_video_stats,
+            "2025-01-01 12:00:00",
         )
 
     def test_all_columns_present(self, sample_channel_details, sample_search_data, sample_vstats):
@@ -27,7 +31,10 @@ class TestBuildChannelProfile:
         """Bug 2: status was always 'inactive' when fetch_video_stats=False
         because posts_per_week=0 with zero video stats. Now it should be 'active'."""
         profile = self._make_profile(
-            sample_channel_details, sample_search_data, dict(ZERO_VIDEO_STATS), has_video_stats=False,
+            sample_channel_details,
+            sample_search_data,
+            dict(ZERO_VIDEO_STATS),
+            has_video_stats=False,
         )
         assert profile["status"] == "active"
 
