@@ -215,25 +215,6 @@ def inject_css():
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
 
-    /* --- Onboarding --- */
-    .onboarding-step {
-        text-align: center; padding: 20px 12px;
-    }
-    .onboarding-step .step-num {
-        display: inline-block; width: 32px; height: 32px; line-height: 32px;
-        border-radius: 50%; background: #000; color: #fff;
-        font-weight: 700; font-size: 14px; margin-bottom: 8px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    }
-    .onboarding-step .step-title {
-        font-size: 15px; font-weight: 600; color: #0F172A; margin-bottom: 4px;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    }
-    .onboarding-step .step-desc {
-        font-size: 13px; color: #64748B;
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    }
-
     /* --- Score bar --- */
     .score-bar-bg {
         background: #E2E8F0; border-radius: 6px; height: 10px; width: 100%;
@@ -551,68 +532,13 @@ def render_search_config():
 # ---------------------------------------------------------------------------
 
 
-def render_onboarding():
-    st.markdown("<br>", unsafe_allow_html=True)
-
+def render_empty_state():
     st.markdown(
-        '<div style="text-align:center;margin:40px 0 16px 0">'
-        '<p style="font-size:28px;font-weight:700;color:#0F172A;margin-bottom:4px;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">'
-        "Find and score YouTube creators</p>"
-        '<p style="font-size:16px;color:#64748B;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">'
-        "Search by keywords, filter by region and followers, and export ranked results.</p>"
+        '<div style="text-align:center;padding:80px 20px;color:#94A3B8">'
+        '<p style="font-size:16px;margin:0">Enter keywords above and click <strong>Search</strong> to find creators.</p>'
         "</div>",
         unsafe_allow_html=True,
     )
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown(
-            '<div class="onboarding-step">'
-            '<div class="step-num">1</div>'
-            '<div class="step-title">Enter keywords</div>'
-            '<div class="step-desc">Add one or more comma-separated search terms to find relevant creators.</div>'
-            "</div>",
-            unsafe_allow_html=True,
-        )
-    with col2:
-        st.markdown(
-            '<div class="onboarding-step">'
-            '<div class="step-num">2</div>'
-            '<div class="step-title">Review results</div>'
-            '<div class="step-desc">Browse scored channels with engagement breakdown, growth, and contact info.</div>'
-            "</div>",
-            unsafe_allow_html=True,
-        )
-    with col3:
-        st.markdown(
-            '<div class="onboarding-step">'
-            '<div class="step-num">3</div>'
-            '<div class="step-title">Export shortlist</div>'
-            '<div class="step-desc">Download a styled Excel report to share with your team.</div>'
-            "</div>",
-            unsafe_allow_html=True,
-        )
-
-    # Quick-start examples
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.markdown(
-        '<p style="text-align:center;font-size:14px;color:#64748B;font-weight:500;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">'
-        "Quick start examples</p>",
-        unsafe_allow_html=True,
-    )
-    qc1, qc2, qc3 = st.columns(3)
-    with qc1:
-        if st.button("Sorare (France, 90 days)", use_container_width=True):
-            st.session_state["keywords_raw"] = "Sorare"
-            st.rerun()
-    with qc2:
-        if st.button("NFT Gaming (Worldwide)", use_container_width=True):
-            st.session_state["keywords_raw"] = "NFT Gaming"
-            st.rerun()
-    with qc3:
-        if st.button("Fantasy Football", use_container_width=True):
-            st.session_state["keywords_raw"] = "Fantasy Football"
-            st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -1139,7 +1065,7 @@ def main():
 
     # Show onboarding or results
     if "df" not in st.session_state or st.session_state["df"] is None:
-        render_onboarding()
+        render_empty_state()
         return
 
     df = st.session_state["df"]
